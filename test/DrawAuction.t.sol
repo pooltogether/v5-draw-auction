@@ -29,7 +29,7 @@ contract DrawAuctionTest is Test {
       SD1x18.wrap(0.9e18) // alpha
     );
 
-    _drawAuction = new DrawAuction(_prizePool, _auctionDuration);
+    _drawAuction = new DrawAuction(_auctionDuration);
 
     vm.warp(0);
 
@@ -53,30 +53,30 @@ contract DrawAuctionTest is Test {
   }
 
   function testRewardBeforeTime() public {
-    assertEq(_drawAuction.reward(), 0);
+    assertEq(_drawAuction.reward(_prizePool), 0);
   }
 
   function testRewardAtTime0() public {
     vm.warp(1 days);
 
-    assertEq(_drawAuction.reward(), 0);
+    assertEq(_drawAuction.reward(_prizePool), 0);
   }
 
   function testRewardAtHalfTime() public {
     vm.warp(1 days + _auctionDuration / 2);
 
-    assertEq(_drawAuction.reward(), 100e18);
+    assertEq(_drawAuction.reward(_prizePool), 100e18);
   }
 
   function testRewardAtFullTime() public {
     vm.warp(1 days + _auctionDuration);
 
-    assertEq(_drawAuction.reward(), 200e18);
+    assertEq(_drawAuction.reward(_prizePool), 200e18);
   }
 
   function testRewardAfterTime() public {
     vm.warp(2 days);
 
-    assertEq(_drawAuction.reward(), 200e18);
+    assertEq(_drawAuction.reward(_prizePool), 200e18);
   }
 }
