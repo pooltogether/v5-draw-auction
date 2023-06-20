@@ -7,6 +7,44 @@ import { Ownable } from "owner-manager/Ownable.sol";
 import { RNGInterface } from "rng/RNGInterface.sol";
 import { PrizePool } from "v5-prize-pool/PrizePool.sol";
 
+/// @notice Emitted when an RNG request has already started
+/// @param lockBlock The block when the RNG request was locked
+error RngInFlight(uint32 lockBlock);
+
+/// @notice Emitted when a beacon period is not over
+/// @param beaconPeriodEndTime The timestamp when the current period will end
+error BeaconPeriodNotOver(uint64 beaconPeriodEndTime);
+
+/// @notice Emitted when there is already a registered RNG request
+error RngAlreadyRequested();
+
+/// @notice Emitted when there is no active RNG request
+error RngNotRequested();
+
+/// @notice Emitted when the RNG request has not completed
+error RngRequestNotCompleted();
+
+/// @notice Emitted when the beacon period start is not set
+error BeaconPeriodStartNotSet();
+
+/// @notice Emitted when the next draw ID is zero
+error NextDrawIdZero();
+
+/// @notice Emitted when the RNG request is not timed-out
+error RngNotTimedOut();
+
+/// @notice Emitted when the beacon period seconds is set to zero
+error BeaconPeriodSecondsZero();
+
+/// @notice Emitted when the prize pool is set to the zero address
+error PrizePoolZeroAddress();
+
+/// @notice Emitted when the RNG service is set to the zero address
+error RNGServiceZeroAddress();
+
+/// @notice Emitted when the RNG timeout is less than or equal to 60 seconds
+error RngTimeoutLTE60s();
+
 contract DrawBeacon is Ownable {
   using SafeERC20 for IERC20;
 
@@ -108,22 +146,19 @@ contract DrawBeacon is Ownable {
   /* ============ Modifiers ============ */
 
   modifier requireDrawNotStarted() {
-    require(
-      rngRequest.lockBlock == 0 || block.number < rngRequest.lockBlock,
-      "DrawBeacon/rng-in-flight"
-    );
+    if (rngRequest.lockBlock != 0 && block.number >= rngRequest.lockBlock) revert RngInFlight(rngRequest.lockBlock);
     _;
   }
 
   modifier requireCanStartDraw() {
-    require(_isBeaconPeriodOver(), "DrawBeacon/beaconPeriod-not-over");
-    require(!isRngRequested(), "DrawBeacon/rng-already-requested");
+    if (!_isBeaconPeriodOver()) revert BeaconPeriodNotOver(_beaconPeriodEndAt());
+    if (isRngRequested()) revert RngAlreadyRequested();
     _;
   }
 
   modifier requireCanCompleteRngRequest() {
-    require(isRngRequested(), "DrawBeacon/rng-not-requested");
-    require(isRngCompleted(), "DrawBeacon/rng-not-complete");
+    if (!isRngRequested()) revert RngNotRequested();
+    if(!isRngCompleted()) revert RngRequestNotCompleted();
     _;
   }
 
@@ -148,8 +183,8 @@ contract DrawBeacon is Ownable {
     uint32 _beaconPeriodSeconds,
     uint32 _rngTimeout
   ) Ownable(_owner) {
-    require(_beaconPeriodStart > 0, "DrawBeacon/beacon-period-gt-zero");
-    require(_nextDrawId >= 1, "DrawBeacon/next-draw-id-gte-one");
+    if (_beaconPeriodStart == 0) revert BeaconPeriodStartNotSet();
+    if (_nextDrawId == 0) revert NextDrawIdZero();
 
     beaconPeriodStartedAt = _beaconPeriodStart;
     nextDrawId = _nextDrawId;
@@ -232,7 +267,7 @@ contract DrawBeacon is Ownable {
 
   /// @notice Can be called by anyone to cancel the draw request if the RNG has timed out.
   function cancelDraw() external {
-    require(isRngTimedOut(), "DrawBeacon/rng-not-timedout");
+    if (!isRngTimedOut()) revert RngNotTimedOut();
     uint32 requestId = rngRequest.id;
     uint32 lockBlock = rngRequest.lockBlock;
     delete rngRequest;
@@ -437,7 +472,7 @@ contract DrawBeacon is Ownable {
    * @param _beaconPeriodSeconds New beacon period in seconds. Must be greater than zero.
    */
   function _setBeaconPeriodSeconds(uint32 _beaconPeriodSeconds) internal {
-    require(_beaconPeriodSeconds > 0, "DrawBeacon/beacon-period-gt-zero");
+    if (_beaconPeriodSeconds == 0) revert BeaconPeriodSecondsZero();
     beaconPeriodSeconds = _beaconPeriodSeconds;
 
     emit BeaconPeriodSecondsSet(_beaconPeriodSeconds);
@@ -448,7 +483,7 @@ contract DrawBeacon is Ownable {
    * @param _prizePool Address of the new PrizePool
    */
   function _setPrizePool(PrizePool _prizePool) internal {
-    require(address(_prizePool) != address(0), "DrawBeacon/PP-not-zero-address");
+    if (address(_prizePool) == address(0)) revert PrizePoolZeroAddress();
     prizePool = _prizePool;
     emit PrizePoolSet(_prizePool);
   }
@@ -458,7 +493,7 @@ contract DrawBeacon is Ownable {
    * @param _rng Address of the new RNG service
    */
   function _setRngService(RNGInterface _rng) internal {
-    require(address(_rng) != address(0), "DrawBeacon/rng-not-zero-address");
+    if (address(_rng) == address(0)) revert RNGServiceZeroAddress();
     rng = _rng;
     emit RngServiceSet(_rng);
   }
@@ -468,7 +503,7 @@ contract DrawBeacon is Ownable {
    * @param _rngTimeout RNG request timeout in seconds
    */
   function _setRngTimeout(uint32 _rngTimeout) internal {
-    require(_rngTimeout > 60, "DrawBeacon/rng-timeout-gt-60s");
+    if (_rngTimeout <= 60) revert RngTimeoutLTE60s();
     rngTimeout = _rngTimeout;
     emit RngTimeoutSet(_rngTimeout);
   }
